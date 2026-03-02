@@ -191,23 +191,27 @@ RegisterNetEvent('landing:zoneSelected', function(data)
     if src ~= GameState.initiator then return end
     if GameState.active then return end
 
-    -- Converter % do mapa para coords do mundo GTA V
-    -- mapX% = (worldX + 4000) / 8500 * 100  →  worldX = (mapX/100 * 8500) - 4000
-    -- mapY% = (8000 - worldY) / 12000 * 100  →  worldY = 8000 - (mapY/100 * 12000)
-    local mx  = tonumber(data.mapX) or 50
-    local my  = tonumber(data.mapY) or 50
-    local wx  = (mx / 100 * 8500) - 4000
-    local wy  = 8000 - (my / 100 * 12000)
+    local mx = tonumber(data.mapX) or 50
+    local my = tonumber(data.mapY) or 50
 
-    local zone = {
+    -- Leaflet picker envia % da grelha de tiles (0-100%)
+    -- Converter de volta para coords do mundo GTA V
+    -- worldX = (mapX%/100 * 8500) - 4000
+    -- worldY = 8000 - (mapY%/100 * 12000)
+    local wx = (mx / 100 * 8500) - 4000
+    local wy = 8000 - (my / 100 * 12000)
+
+    -- CRITICO: guardar zone no GameState E marcar como ativo
+    GameState.zone = {
         x     = wx,
         y     = wy,
-        z     = 0,       -- servidor n\u00e3o precisa de z para dist\u00e2ncia 2D
+        z     = 0,
         label = 'Zona Personalizada',
-        hint  = ('Coordenadas: %.0f, %.0f'):format(wx, wy),
+        hint  = ('%.0f, %.0f'):format(wx, wy),
         mapX  = mx,
         mapY  = my,
     }
+    GameState.active = true  -- CRITICO: sem isto o jogo nunca começa
 
     -- Recolher jogadores online
     local players = QBCore.Functions.GetPlayers()
@@ -216,24 +220,24 @@ RegisterNetEvent('landing:zoneSelected', function(data)
     for i, psrc in ipairs(players) do
         local P = QBCore.Functions.GetPlayer(psrc)
         GameState.players[psrc] = {
-            name        = P and P.PlayerData.charinfo and
-                          (P.PlayerData.charinfo.firstname .. ' ' .. P.PlayerData.charinfo.lastname)
-                          or ('Jogador ' .. psrc),
-            landed      = false,
-            landHealth  = 1000,
+            name       = P and P.PlayerData.charinfo and
+                         (P.PlayerData.charinfo.firstname .. ' ' .. P.PlayerData.charinfo.lastname)
+                         or ('Jogador ' .. tostring(psrc)),
+            landed     = false,
+            landHealth = 1000,
             x = 0, y = 0, z = 0,
-            spawnIndex  = i,
+            spawnIndex = i,
         }
     end
 
-    print(('[Landing] Zona escolhida: %s | Avião: %s | Jogadores: %d'):format(
-        zone.label, GameState.plane.label, GameState.totalCount))
+    print(('[Landing] Zona: %.0f, %.0f | Avião: %s | Jogadores: %d'):format(
+        wx, wy, GameState.plane.label, GameState.totalCount))
 
-    -- Enviar dados de início a todos + countdown
+    -- Enviar startGame a todos (com GameState.zone agora preenchido)
     for psrc, p in pairs(GameState.players) do
         TriggerClientEvent('landing:startGame', psrc, {
             plane        = GameState.plane,
-            zone         = GameState.zone,
+            zone         = GameState.zone,   -- agora correto
             spawnIndex   = p.spawnIndex,
             totalPlayers = GameState.totalCount,
             flightTime   = Config.FlightTimeSeconds,
@@ -241,7 +245,7 @@ RegisterNetEvent('landing:zoneSelected', function(data)
         })
     end
 
-    -- Countdown broadcast
+    -- Countdown
     local countdownSecs = Config.CountdownSeconds or 10
     for i = countdownSecs, 1, -1 do
         local tick = i
@@ -254,11 +258,10 @@ RegisterNetEvent('landing:zoneSelected', function(data)
         broadcast('landing:countdown', 0)  -- GO!
     end)
 
-    -- Timer global de voo (após countdown)
+    -- Timer global de voo
     local totalDelay = (Config.FlightTimeSeconds + countdownSecs) * 1000
     SetTimeout(totalDelay, function()
         if not GameState.active then return end
-        -- Forçar aterragem dos que ainda não aterraram
         for psrc, p in pairs(GameState.players) do
             if not p.landed then
                 p.landed     = true

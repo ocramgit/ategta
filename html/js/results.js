@@ -1,7 +1,7 @@
 /**
- * results.js — GeoGuessr-style final results map
- * Shows target zone + all player landing positions as pins on the map.
- * Sidebar shows ranking. 30s auto-timer then closes.
+ * results.js — GeoGuessr-style results using Leaflet.js zoomable map
+ * Shows target + player landing positions on the GTA V tile map.
+ * Sidebar shows ranking with distance and points.
  */
 
 const ResultsModule = (() => {
@@ -11,105 +11,109 @@ const ResultsModule = (() => {
         '#00f5a0', '#fd79a8', '#fdcb6e', '#74b9ff'
     ];
     let closeTimer = null;
+    let rMap = null;
+
+    // Convert map % back to Leaflet LatLng (using same tile projection as picker)
+    function pctToLatLng(mapXPct, mapYPct, leafletMap) {
+        const px = (mapXPct / 100) * 16384;
+        const py = (mapYPct / 100) * 16384;
+        return leafletMap.unproject([px, py], 4);
+    }
 
     function init(results, zone, duration) {
-        // Zone label
         document.getElementById('results-zone-label').textContent = zone?.label || '–';
 
-        // Render map pins
-        renderMapPins(results, zone);
-
-        // Render sidebar list
+        renderLeafletMap(results, zone);
         renderSidebar(results);
-
-        // Start countdown
         startCloseTimer(duration || 30);
     }
 
-    // ------ MAP PINS ------
-    function renderMapPins(results, zone) {
-        const container = document.getElementById('results-pins');
-        container.innerHTML = '';
+    function renderLeafletMap(results, zone) {
+        const mapEl = document.getElementById('results-map-leaflet');
 
-        // Target pin (big red)
-        const targetPin = makePinEl({
-            label: '🎯',
-            hint: zone.label,
-            mapX: zone.mapX,
-            mapY: zone.mapY,
-            color: '#ff2d55',
-            isTarget: true,
-            delay: 0,
+        if (rMap) { rMap.remove(); rMap = null; }
+
+        rMap = L.map(mapEl, {
+            crs: L.CRS.Simple,
+            minZoom: -3,
+            maxZoom: 3,
+            zoomControl: true,
+            attributionControl: false,
         });
-        container.appendChild(targetPin);
 
-        // Player pins
+        const tileUrl = 'https://maptilesv3.gta5.dev/gta5tiles/tiles/{z}/{x}/{y}.jpg';
+        const bounds = L.latLngBounds(
+            rMap.unproject([0, 16384], 4),
+            rMap.unproject([16384, 0], 4)
+        );
+
+        L.tileLayer(tileUrl, {
+            tileSize: 256,
+            minZoom: -3,
+            maxZoom: 3,
+            noWrap: true,
+            bounds: bounds,
+        }).addTo(rMap);
+
+        // Target marker
+        const targetLatLng = pctToLatLng(zone.mapX, zone.mapY, rMap);
+        const targetIcon = L.divIcon({
+            className: 'leaflet-gta-pin',
+            html: '<div class="lpin-target">🎯</div>',
+            iconSize: [44, 44],
+            iconAnchor: [22, 44],
+        });
+        L.marker(targetLatLng, { icon: targetIcon })
+            .bindTooltip(zone.label, { permanent: true, direction: 'top', className: 'lpin-label' })
+            .addTo(rMap);
+
+        // Collect points for auto-fitting the view
+        const allLatLngs = [targetLatLng];
+
+        // Player markers
         results.forEach((r, i) => {
             if (!r.landed || (r.mapX === 50 && r.mapY === 50)) return;
 
-            const rankSymbol = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${r.rank}`;
-            const pin = makePinEl({
-                label: rankSymbol,
-                hint: `${r.name} — ${r.dist}m`,
-                mapX: r.mapX,
-                mapY: r.mapY,
-                color: PIN_COLORS[i % PIN_COLORS.length],
-                delay: 200 + i * 150,
+            const rankSym = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${r.rank}`;
+            const color = PIN_COLORS[i % PIN_COLORS.length];
+
+            const playerLatLng = pctToLatLng(r.mapX, r.mapY, rMap);
+            allLatLngs.push(playerLatLng);
+
+            const playerIcon = L.divIcon({
+                className: 'leaflet-gta-pin',
+                html: `<div class="lpin-player" style="background:${color}">${rankSym}</div>`,
+                iconSize: [36, 36],
+                iconAnchor: [18, 36],
             });
-            container.appendChild(pin);
 
-            // Draw line to target
-            drawLine(container, r.mapX, r.mapY, zone.mapX, zone.mapY, PIN_COLORS[i % PIN_COLORS.length], 200 + i * 150);
+            L.marker(playerLatLng, { icon: playerIcon })
+                .bindTooltip(`${r.name} — ${r.dist}m`, { permanent: false, direction: 'top', className: 'lpin-label' })
+                .addTo(rMap);
+
+            // Dashed line from player to target
+            L.polyline([playerLatLng, targetLatLng], {
+                color: color,
+                weight: 2,
+                opacity: 0.7,
+                dashArray: '8, 6',
+            }).addTo(rMap);
         });
-    }
 
-    function makePinEl({ label, hint, mapX, mapY, color, isTarget, delay }) {
-        const el = document.createElement('div');
-        el.className = isTarget ? 'result-pin target-pin' : 'result-pin player-pin';
-        el.style.left = mapX + '%';
-        el.style.top = mapY + '%';
-        el.style.setProperty('--pin-color', color);
-        el.style.animationDelay = (delay || 0) + 'ms';
-        el.innerHTML = `
-            <div class="pin-dot">${label}</div>
-            <div class="pin-tooltip">${escapeHtml(hint)}</div>
-        `;
-        return el;
-    }
-
-    function drawLine(container, x1, y1, x2, y2, color, delay) {
-        // Use SVG positioned absolutely over map
-        let svg = container.querySelector('.pins-svg');
-        if (!svg) {
-            svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            svg.classList.add('pins-svg');
-            svg.setAttribute('width', '100%');
-            svg.setAttribute('height', '100%');
-            svg.style.cssText = 'position:absolute;inset:0;pointer-events:none;overflow:visible';
-            container.insertBefore(svg, container.firstChild);
+        // Fit map to show all markers
+        if (allLatLngs.length > 1) {
+            rMap.fitBounds(L.latLngBounds(allLatLngs), { padding: [60, 60] });
+        } else {
+            rMap.setView(targetLatLng, 1);
         }
-
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', x1 + '%');
-        line.setAttribute('y1', y1 + '%');
-        line.setAttribute('x2', x2 + '%');
-        line.setAttribute('y2', y2 + '%');
-        line.setAttribute('stroke', color);
-        line.setAttribute('stroke-width', '1.5');
-        line.setAttribute('stroke-dasharray', '6,4');
-        line.setAttribute('opacity', '0.6');
-        line.style.animationDelay = delay + 'ms';
-        line.classList.add('result-line');
-        svg.appendChild(line);
     }
 
-    // ------ SIDEBAR ------
     function renderSidebar(results) {
         const list = document.getElementById('results-list');
         list.innerHTML = '';
 
         results.forEach((r, i) => {
-            const rankSymbol = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${r.rank}`;
+            const rankSym = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${r.rank}`;
             const distText = r.landed && r.dist < 99990 ? `${r.dist}m do alvo` : 'Não aterrou';
             const explText = r.exploded ? ' 💥' : '';
             const color = PIN_COLORS[i % PIN_COLORS.length];
@@ -119,7 +123,7 @@ const ResultsModule = (() => {
             item.style.animationDelay = (i * 120) + 'ms';
             item.style.setProperty('--item-color', color);
             item.innerHTML = `
-                <div class="result-rank">${rankSymbol}</div>
+                <div class="result-rank">${rankSym}</div>
                 <div class="result-info">
                     <div class="result-name">${escapeHtml(r.name)}${explText}</div>
                     <div class="result-dist">${distText}</div>
@@ -130,7 +134,6 @@ const ResultsModule = (() => {
         });
     }
 
-    // ------ AUTO CLOSE TIMER ------
     function startCloseTimer(duration) {
         if (closeTimer) clearInterval(closeTimer);
         let remaining = duration;
@@ -143,17 +146,16 @@ const ResultsModule = (() => {
             if (remaining <= 10 && el) el.style.color = 'var(--neon-red)';
             if (remaining <= 0) {
                 clearInterval(closeTimer);
-                fetch(`https://${getResourceName()}/closeUI`, {
+                const resName = (typeof GetParentResourceName !== 'undefined')
+                    ? GetParentResourceName()
+                    : (window.location.hostname || 'landing-competition');
+                fetch(`https://${resName}/closeUI`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({})
                 }).catch(() => { });
                 document.getElementById('app').classList.add('hidden');
             }
         }, 1000);
-    }
-
-    function getResourceName() {
-        return window.location.hostname || 'landing-competition';
     }
 
     function escapeHtml(str) {

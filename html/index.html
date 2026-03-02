@@ -5,9 +5,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Landing Competition</title>
+
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;900&display=swap"
         rel="stylesheet" />
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
     <link rel="stylesheet" href="css/style.css" />
 </head>
 
@@ -18,21 +24,21 @@
         <!-- ======== VIEW: PICKER (só para o iniciador) ======== -->
         <div id="view-picker" class="view hidden">
             <div class="picker-container">
-                <div id="picker-map-bg"></div>
+                <!-- Leaflet map renders here -->
+                <div id="picker-map-leaflet"></div>
 
-                <!-- Zone markers (injetados por picker.js) -->
-                <div id="picker-markers"></div>
-
-                <!-- Info painel -->
-                <div class="picker-overlay">
+                <!-- Info painel (overlay no topo) -->
+                <div class="picker-overlay-ui">
                     <div class="picker-header">
                         <div class="map-badge">✈️ ESCOLHE A ZONA DE ATERRAGEM</div>
                         <div class="picker-plane-info">
                             Avião: <strong id="picker-plane-name">–</strong>
                         </div>
                     </div>
-                    <div class="picker-hint">🖱️ Clica em qualquer ponto do mapa para marcar a zona</div>
+                    <div class="picker-hint">🖱️ Clica em qualquer ponto do mapa · Zoom com scroll · Clica de novo para
+                        mudar</div>
                 </div>
+                <!-- Confirm button injected here by picker.js -->
             </div>
         </div>
 
@@ -80,16 +86,15 @@
         <div id="view-results" class="view hidden">
             <div class="results-container">
 
-                <!-- Mapa com pins -->
+                <!-- Leaflet map (left) -->
                 <div class="results-map-wrap">
-                    <div id="results-map-bg"></div>
-                    <div id="results-pins"></div><!-- target + player pins injetados -->
+                    <div id="results-map-leaflet"></div>
                 </div>
 
-                <!-- Sidebar com ranking -->
+                <!-- Sidebar (right) -->
                 <div class="results-sidebar">
                     <div class="results-header">
-                        <div class="trophy-emoji">�</div>
+                        <div class="trophy-emoji">🏁</div>
                         <h2>Resultados Finais</h2>
                         <div class="results-zone-label" id="results-zone-label">–</div>
                     </div>
@@ -114,7 +119,10 @@
         <div id="countdown-number">10</div>
     </div>
 
-    <!-- Scripts -->
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- App Scripts -->
     <script src="js/map.js"></script>
     <script src="js/picker.js"></script>
     <script src="js/results.js"></script>
