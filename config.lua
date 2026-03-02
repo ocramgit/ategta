@@ -149,7 +149,7 @@ Config.Scoring = {
 -- =====================================================
 -- COUNTDOWN
 -- =====================================================
-Config.CountdownSeconds = 5   -- segundos de countdow antes de voar
+Config.CountdownSeconds = 10   -- segundos de countdown antes de voar
 
 -- =====================================================
 -- TEMPO DE JOGO
@@ -157,10 +157,9 @@ Config.CountdownSeconds = 5   -- segundos de countdow antes de voar
 Config.FlightTimeSeconds = 300  -- 5 minutos para aterrar
 
 -- =====================================================
--- VOTAÇÃO
--- Tempo para votar depois de todos aterrarem (ou timer acabar)
+-- RESULTADOS (ecrã GeoGuessr no final)
 -- =====================================================
-Config.VoteTimeSeconds = 60
+Config.ResultsDurationSeconds = 30   -- segundos até fechar automaticamente
 
 -- =====================================================
 -- COMANDO PARA INICIAR

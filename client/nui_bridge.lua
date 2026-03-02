@@ -1,16 +1,17 @@
--- NUI Bridge: handlers de NUI → Lua e Lua → NUI
+-- NUI Bridge — Callbacks NUI → Lua  e  Lua → NUI
 
 -- =====================================================
 -- NUI CALLBACKS (NUI → Lua)
 -- =====================================================
 
--- Jogador votou numa aterragem
-RegisterNUICallback('submitVote', function(data, cb)
-    TriggerServerEvent('landing:submitVote', data.votedSource)
+-- Iniciador selecionou uma zona no picker
+RegisterNUICallback('zoneSelected', function(data, cb)
+    TriggerServerEvent('landing:zoneSelected', data.zoneIndex)
+    SetNuiFocus(false, false)
     cb({ ok = true })
 end)
 
--- NUI pede para fechar (pressionar ESC no scoreboard)
+-- Fechar UI (ESC no ecrã de resultados)
 RegisterNUICallback('closeUI', function(_, cb)
     SetNuiFocus(false, false)
     SendNUIMessage({ action = 'hide' })
@@ -21,23 +22,17 @@ end)
 -- EVENTOS DO SERVIDOR → NUI
 -- =====================================================
 
--- Outro jogador aterrou
 RegisterNetEvent('landing:nuiEvent', function(event, data)
     SendNUIMessage({ action = event, data = data })
 
-    -- Se for abertura de votação, bloquear o focus para interação
-    if event == 'openVoting' then
-        SetNuiFocus(true, true)
-    end
-
-    -- Se for scoreboard, mantém focus bloqueado
-    if event == 'openScoreboard' then
+    -- Resultados: bloquear focus para o jogador ver o mapa
+    if event == 'openResults' then
         SetNuiFocus(true, true)
     end
 end)
 
 -- =====================================================
--- KEYBIND: fechar NUI com ESC no scoreboard
+-- FECHAR NUI COM ESC
 -- =====================================================
 RegisterCommand('landing_close', function()
     SetNuiFocus(false, false)

@@ -13,23 +13,40 @@
 
 <body>
 
-    <!-- ======================== ROOT ======================== -->
     <div id="app" class="hidden">
 
-        <!-- ========== VIEW: MAP ========== -->
-        <div id="view-map" class="view">
+        <!-- ======== VIEW: PICKER (só para o iniciador) ======== -->
+        <div id="view-picker" class="view hidden">
+            <div class="picker-container">
+                <div id="picker-map-bg"></div>
+
+                <!-- Zone markers (injetados por picker.js) -->
+                <div id="picker-markers"></div>
+
+                <!-- Info painel -->
+                <div class="picker-overlay">
+                    <div class="picker-header">
+                        <div class="map-badge">✈️ ESCOLHE A ZONA DE ATERRAGEM</div>
+                        <div class="picker-plane-info">
+                            Avião: <strong id="picker-plane-name">–</strong>
+                        </div>
+                    </div>
+                    <div class="picker-hint">🖱️ Clica em qualquer ponto do mapa para marcar a zona</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======== VIEW: MAP (HUD de voo) ======== -->
+        <div id="view-map" class="view hidden">
             <div class="map-container">
-                <!-- Mapa GTA V Background -->
                 <div id="map-bg"></div>
 
-                <!-- Marker animado da zona de aterragem -->
                 <div id="landing-marker" class="marker-pulse">
                     <div class="marker-ring"></div>
                     <div class="marker-dot"></div>
                     <div class="marker-label" id="marker-label">–</div>
                 </div>
 
-                <!-- Overlay de info -->
                 <div class="map-overlay">
                     <div class="map-header">
                         <div class="map-badge">✈️ LANDING COMPETITION</div>
@@ -54,84 +71,53 @@
                         </div>
                     </div>
 
-                    <!-- Feed de aterragens -->
                     <div class="landed-feed" id="landed-feed"></div>
                 </div>
             </div>
         </div>
 
-        <!-- ========== VIEW: VOTING ========== -->
-        <div id="view-voting" class="view hidden">
-            <div class="voting-container">
-                <div class="voting-header">
-                    <h1>🗳️ Vota na Melhor Aterragem</h1>
-                    <div class="vote-timer-wrap">
-                        <span>Termina em</span>
-                        <span id="vote-timer" class="vote-timer">60</span>s
+        <!-- ======== VIEW: RESULTS (GeoGuessr style) ======== -->
+        <div id="view-results" class="view hidden">
+            <div class="results-container">
+
+                <!-- Mapa com pins -->
+                <div class="results-map-wrap">
+                    <div id="results-map-bg"></div>
+                    <div id="results-pins"></div><!-- target + player pins injetados -->
+                </div>
+
+                <!-- Sidebar com ranking -->
+                <div class="results-sidebar">
+                    <div class="results-header">
+                        <div class="trophy-emoji">�</div>
+                        <h2>Resultados Finais</h2>
+                        <div class="results-zone-label" id="results-zone-label">–</div>
+                    </div>
+
+                    <div class="results-list" id="results-list"></div>
+
+                    <div class="results-footer">
+                        <div class="close-countdown-wrap">
+                            <span>A fechar em </span>
+                            <span id="results-timer" class="results-countdown">30</span>s
+                        </div>
+                        <p class="close-hint">Prima ESC para fechar</p>
                     </div>
                 </div>
-
-                <div class="cards-stack" id="cards-stack">
-                    <!-- Cards injetados dinamicamente por voting.js -->
-                </div>
-
-                <div class="vote-buttons" id="vote-buttons">
-                    <button id="btn-nope" class="btn-vote btn-nope" onclick="voteAction(false)">
-                        <span>✗</span>
-                    </button>
-                    <div class="vote-info" id="vote-info">
-                        <span id="vote-count">0</span> / <span id="vote-total">0</span>
-                    </div>
-                    <button id="btn-like" class="btn-vote btn-like" onclick="voteAction(true)">
-                        <span>♥</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- ========== VIEW: SCOREBOARD ========== -->
-        <div id="view-scoreboard" class="view hidden">
-            <div class="scoreboard-container">
-                <div class="scoreboard-header">
-                    <div class="trophy-icon">🏆</div>
-                    <h1>Resultados Finais</h1>
-                    <div id="zone-result-label" class="zone-result-label">–</div>
-                </div>
-
-                <div class="scoreboard-table-wrap">
-                    <table class="scoreboard-table">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th>Jogador</th>
-                                <th>📍 Distância</th>
-                                <th>💥 Dano</th>
-                                <th>❤️ Votos</th>
-                                <th>⭐ Total</th>
-                            </tr>
-                        </thead>
-                        <tbody id="scoreboard-body"></tbody>
-                    </table>
-                </div>
-
-                <!-- Categorias especiais -->
-                <div class="special-awards" id="special-awards"></div>
-
-                <p class="close-hint">Prima ESC para fechar</p>
             </div>
         </div>
 
     </div><!-- #app -->
 
-    <!-- ========== COUNTDOWN OVERLAY ========== -->
+    <!-- Countdown Overlay -->
     <div id="countdown-overlay" class="hidden">
-        <div id="countdown-number">5</div>
+        <div id="countdown-number">10</div>
     </div>
 
-    <!-- ========== SCRIPTS ========== -->
+    <!-- Scripts -->
     <script src="js/map.js"></script>
-    <script src="js/voting.js"></script>
-    <script src="js/scoreboard.js"></script>
+    <script src="js/picker.js"></script>
+    <script src="js/results.js"></script>
     <script src="js/app.js"></script>
 </body>
 

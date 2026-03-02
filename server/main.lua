@@ -4,23 +4,27 @@ local QBCore = exports['qb-core']:GetCoreObject()
 -- ESTADO DO JOGO
 -- =====================================================
 local GameState = {
-    active      = false,
-    plane       = nil,       -- { model, label }
-    zone        = nil,       -- config landing zone
-    players     = {},        -- { [source] = { name, landed, x, y, z, startHealth, landHealth, distance, votes } }
-    landedCount = 0,
-    totalCount  = 0,
-    votePhase   = false,
+    active         = false,
+    flightStarted  = false,
+    resultsStarted = false,   -- evita chamar startResultsPhase duas vezes
+    plane          = nil,
+    zone           = nil,
+    initiator      = nil,
+    players        = {},
+    landedCount    = 0,
+    totalCount     = 0,
 }
 
 local function resetGame()
-    GameState.active      = false
-    GameState.plane       = nil
-    GameState.zone        = nil
-    GameState.players     = {}
-    GameState.landedCount = 0
-    GameState.totalCount  = 0
-    GameState.votePhase   = false
+    GameState.active         = false
+    GameState.flightStarted  = false
+    GameState.resultsStarted = false
+    GameState.plane          = nil
+    GameState.zone           = nil
+    GameState.initiator      = nil
+    GameState.players        = {}
+    GameState.landedCount    = 0
+    GameState.totalCount     = 0
 end
 
 -- =====================================================
@@ -30,114 +34,103 @@ local function getRandomElement(t)
     return t[math.random(1, #t)]
 end
 
-local function calcDistancePoints(dist)
-    for _, tier in ipairs(Config.Scoring.distancePoints) do
-        if dist <= tier.max then return tier.pts end
-    end
-    return 0
-end
-
-local function calcDamageBonus(ratio) -- ratio = dano sofrido 0..1
-    for _, tier in ipairs(Config.Scoring.damageBonus) do
-        if ratio >= tier.minDmg then
-            return tier.pts, tier.label
-        end
-    end
-    return 0, "✅ Intacta"
-end
-
-local function broadcastNUI(event, data)
+local function broadcast(event, ...)
     for src, _ in pairs(GameState.players) do
-        TriggerClientEvent('landing:nuiEvent', src, event, data)
+        TriggerClientEvent(event, src, ...)
+    end
+end
+
+local function broadcastNUI(action, data)
+    for src, _ in pairs(GameState.players) do
+        TriggerClientEvent('landing:nuiEvent', src, action, data)
     end
 end
 
 -- =====================================================
--- CALCULAR SCORES FINAIS
+-- CONVERTER COORDS DO MUNDO → % NO MAPA
+-- Bounds aproximados do mapa GTA V
+-- X: -4000 (esq) a 4500 (dir) → 8500 unidades
+-- Y: 8000 (topo/norte) a -4000 (fundo/sul) → 12000 unidades
 -- =====================================================
-local function computeScores()
+local function worldToMapPct(wx, wy)
+    local px = (wx + 4000) / 8500 * 100
+    local py = (8000 - wy)  / 12000 * 100
+    return math.max(0, math.min(100, px)),
+           math.max(0, math.min(100, py))
+end
+
+-- =====================================================
+-- CALCULAR DISTÂNCIA AO ALVO
+-- =====================================================
+local function calcDistance(p)
+    if not p.landed or not GameState.zone then return 99999 end
+    local dx = p.x - GameState.zone.x
+    local dy = p.y - GameState.zone.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+
+-- =====================================================
+-- CALCULAR SCORES E GERAR RESULTADOS
+-- =====================================================
+local function computeResults()
     local results = {}
+    local zx = GameState.zone.x
+    local zy = GameState.zone.y
+    local zmx, zmy = worldToMapPct(zx, zy)
 
     for src, p in pairs(GameState.players) do
-        local distPts   = 0
-        local dmgPts    = 0
-        local dmgLabel  = "❓ Não aterrou"
-        local dist      = 9999
+        local dist    = calcDistance(p)
+        local exploded = (p.landHealth ~= nil and p.landHealth < 200)
+        local pts      = 0
 
         if p.landed then
-            -- Distância ao alvo
-            local zx, zy = GameState.zone.x, GameState.zone.y
-            dist    = math.sqrt((p.x - zx)^2 + (p.y - zy)^2)
-            distPts = calcDistancePoints(dist)
-
-            -- Dano
-            local ratio = 0
-            if p.startHealth and p.startHealth > 0 then
-                ratio = math.max(0, (p.startHealth - p.landHealth) / p.startHealth)
-            end
-            dmgPts, dmgLabel = calcDamageBonus(ratio)
+            -- pontuação base: 10000 - distância*10 (mínimo 0)
+            pts = math.max(0, 10000 - math.floor(dist) * 10)
+            -- penalidade se explodiu
+            if exploded then pts = math.max(0, pts - 3000) end
         end
 
-        local votePts = (p.votes or 0) * Config.Scoring.votePoints
-        local total   = distPts + dmgPts + votePts
+        local mx, my = 50.0, 50.0
+        if p.landed and p.x ~= 0 then
+            mx, my = worldToMapPct(p.x, p.y)
+        end
 
         results[#results + 1] = {
-            source    = src,
-            name      = p.name,
-            landed    = p.landed,
-            dist      = math.floor(dist),
-            distPts   = distPts,
-            dmgPts    = dmgPts,
-            dmgLabel  = dmgLabel,
-            votes     = p.votes or 0,
-            votePts   = votePts,
-            total     = total,
-            cardData  = p.cardData or nil,    -- dados do card NUI
+            source   = src,
+            name     = p.name,
+            landed   = p.landed,
+            exploded = exploded,
+            dist     = math.floor(dist),
+            pts      = pts,
+            mapX     = mx,
+            mapY     = my,
         }
     end
 
-    -- Ordenar por total desc
-    table.sort(results, function(a, b) return a.total > b.total end)
-
-    -- Rank
+    table.sort(results, function(a, b) return a.pts > b.pts end)
     for i, r in ipairs(results) do r.rank = i end
 
-    return results
+    return results, zmx, zmy
 end
 
 -- =====================================================
--- FASE DE VOTAÇÃO
+-- FASE FINAL: mostrar resultados GeoGuessr
 -- =====================================================
-local function startVotePhase()
-    GameState.votePhase = true
+local function startResultsPhase()
+    if GameState.resultsStarted then return end   -- guard dupla chamada
+    GameState.resultsStarted = true
+    GameState.flightStarted  = false
 
-    -- Construir lista de cards para votação
-    local cards = {}
-    for src, p in pairs(GameState.players) do
-        if p.landed then
-            cards[#cards + 1] = {
-                source   = src,
-                name     = p.name,
-                cardData = p.cardData,
-            }
-        end
-    end
+    local results, zmx, zmy = computeResults()
 
-    broadcastNUI('openVoting', { cards = cards, duration = Config.VoteTimeSeconds })
+    broadcastNUI('openResults', {
+        results  = results,
+        zone     = { label = GameState.zone.label, mapX = zmx, mapY = zmy },
+        duration = Config.ResultsDurationSeconds,
+    })
 
-    -- Timer de votação
-    SetTimeout(Config.VoteTimeSeconds * 1000, function()
-        local results = computeScores()
-        broadcastNUI('openScoreboard', { results = results, zone = { label = GameState.zone.label } })
-
-        -- Notificar chat
-        for src, _ in pairs(GameState.players) do
-            TriggerClientEvent('QBCore:Notify', src, '🏆 Resultados finais!', 'success', 7000)
-        end
-
-        SetTimeout(15000, function()
-            resetGame()
-        end)
+    SetTimeout((Config.ResultsDurationSeconds + 5) * 1000, function()
+        resetGame()
     end)
 end
 
@@ -146,98 +139,99 @@ end
 -- =====================================================
 local function checkAllLanded()
     if GameState.landedCount >= GameState.totalCount then
-        Wait(2000)
-        startVotePhase()
+        SetTimeout(2000, function()
+            if GameState.active and GameState.flightStarted then
+                startResultsPhase()  -- guard interno em startResultsPhase
+            end
+        end)
     end
 end
 
 -- =====================================================
--- EVENTOS DE CLIENTE
+-- EVENTO: jogador registou aterragem
 -- =====================================================
-
--- Jogador registou aterragem
 RegisterNetEvent('landing:registerLanding', function(data)
     local src = source
-    if not GameState.active then return end
+    if not GameState.active or not GameState.flightStarted then return end
     local p = GameState.players[src]
     if not p or p.landed then return end
 
-    p.landed      = true
-    p.x           = data.x
-    p.y           = data.y
-    p.z           = data.z
-    p.landHealth  = data.health
-    p.cardData    = data.cardData  -- { speed, heading, damage }
+    p.landed     = true
+    p.x          = data.x
+    p.y          = data.y
+    p.z          = data.z
+    p.landHealth = data.health
+
     GameState.landedCount = GameState.landedCount + 1
 
-    print(('[Landing] %s aterrou! (%d/%d)'):format(p.name, GameState.landedCount, GameState.totalCount))
+    local dist = calcDistance(p)
+    print(('[Landing] %s aterrou! Distância: %.1fm (%d/%d)'):format(
+        p.name, dist, GameState.landedCount, GameState.totalCount))
 
     -- Avisar todos
-    broadcastNUI('playerLanded', { name = p.name, count = GameState.landedCount, total = GameState.totalCount })
+    broadcastNUI('playerLanded', {
+        name  = p.name,
+        count = GameState.landedCount,
+        total = GameState.totalCount,
+    })
 
-    checkAllLanded()
+    -- Se todos já aterraram
+    if GameState.landedCount >= GameState.totalCount then
+        SetTimeout(2000, function()
+            startResultsPhase()  -- guard interno evita dupla chamada
+        end)
+    end
 end)
 
--- Jogador submeteu voto
-RegisterNetEvent('landing:submitVote', function(votedSrc)
+-- =====================================================
+-- EVENTO: iniciador escolheu a zona no mapa
+-- =====================================================
+RegisterNetEvent('landing:zoneSelected', function(data)
     local src = source
-    if not GameState.votePhase then return end
-    if src == votedSrc then return end  -- não pode votar em si próprio
+    if src ~= GameState.initiator then return end
+    if GameState.active then return end
 
-    local target = GameState.players[tonumber(votedSrc)]
-    if target then
-        target.votes = (target.votes or 0) + 1
-    end
-end)
+    -- Converter % do mapa para coords do mundo GTA V
+    -- mapX% = (worldX + 4000) / 8500 * 100  →  worldX = (mapX/100 * 8500) - 4000
+    -- mapY% = (8000 - worldY) / 12000 * 100  →  worldY = 8000 - (mapY/100 * 12000)
+    local mx  = tonumber(data.mapX) or 50
+    local my  = tonumber(data.mapY) or 50
+    local wx  = (mx / 100 * 8500) - 4000
+    local wy  = 8000 - (my / 100 * 12000)
 
--- =====================================================
--- COMANDO PARA INICIAR O JOGO
--- =====================================================
-QBCore.Commands.Add(Config.Command, 'Iniciar competição de aterragem de aviões', {}, false, function(source, args)
-    local Player = QBCore.Functions.GetPlayer(source)
-    if not Player then return end
-
-    -- Qualquer jogador pode iniciar
-    if GameState.active then
-        TriggerClientEvent('QBCore:Notify', source, '⚠️ Já existe um jogo ativo!', 'error', 3000)
-        return
-    end
+    local zone = {
+        x     = wx,
+        y     = wy,
+        z     = 0,       -- servidor n\u00e3o precisa de z para dist\u00e2ncia 2D
+        label = 'Zona Personalizada',
+        hint  = ('Coordenadas: %.0f, %.0f'):format(wx, wy),
+        mapX  = mx,
+        mapY  = my,
+    }
 
     -- Recolher jogadores online
     local players = QBCore.Functions.GetPlayers()
-    if #players < 1 then
-        TriggerClientEvent('QBCore:Notify', source, '⚠️ Precisas de pelo menos 1 jogador.', 'error', 3000)
-        return
-    end
-
-    -- Setup do estado
-    resetGame()
-    GameState.active    = true
-    GameState.plane     = getRandomElement(Config.Planes)
-    GameState.zone      = getRandomElement(Config.LandingZones)
     GameState.totalCount = #players
 
-    for i, src in ipairs(players) do
-        local P = QBCore.Functions.GetPlayer(src)
-        GameState.players[src] = {
+    for i, psrc in ipairs(players) do
+        local P = QBCore.Functions.GetPlayer(psrc)
+        GameState.players[psrc] = {
             name        = P and P.PlayerData.charinfo and
                           (P.PlayerData.charinfo.firstname .. ' ' .. P.PlayerData.charinfo.lastname)
-                          or ('Jogador ' .. src),
+                          or ('Jogador ' .. psrc),
             landed      = false,
-            votes       = 0,
-            startHealth = 1000,
             landHealth  = 1000,
-            cardData    = nil,
+            x = 0, y = 0, z = 0,
             spawnIndex  = i,
         }
     end
 
-    print(('[Landing] Jogo iniciado! Avião: %s | Zona: %s | Jogadores: %d'):format(
-        GameState.plane.label, GameState.zone.label, GameState.totalCount))
+    print(('[Landing] Zona escolhida: %s | Avião: %s | Jogadores: %d'):format(
+        zone.label, GameState.plane.label, GameState.totalCount))
 
-    -- Enviar dados de início a todos (com spawn, mas ainda sem timer ativo)
-    for src, p in pairs(GameState.players) do
-        TriggerClientEvent('landing:startGame', src, {
+    -- Enviar dados de início a todos + countdown
+    for psrc, p in pairs(GameState.players) do
+        TriggerClientEvent('landing:startGame', psrc, {
             plane        = GameState.plane,
             zone         = GameState.zone,
             spawnIndex   = p.spawnIndex,
@@ -247,44 +241,72 @@ QBCore.Commands.Add(Config.Command, 'Iniciar competição de aterragem de aviõe
         })
     end
 
-    -- =====================================================
-    -- COUNTDOWN: 5, 4, 3, 2, 1, GO!
-    -- =====================================================
-    local countdownSecs = Config.CountdownSeconds or 5
+    -- Countdown broadcast
+    local countdownSecs = Config.CountdownSeconds or 10
     for i = countdownSecs, 1, -1 do
         local tick = i
         SetTimeout((countdownSecs - tick) * 1000, function()
-            for src, _ in pairs(GameState.players) do
-                TriggerClientEvent('landing:countdown', src, tick)
-            end
+            broadcast('landing:countdown', tick)
         end)
     end
-    -- GO!
     SetTimeout(countdownSecs * 1000, function()
-        for src, _ in pairs(GameState.players) do
-            TriggerClientEvent('landing:countdown', src, 0)  -- 0 = GO!
-        end
+        GameState.flightStarted = true
+        broadcast('landing:countdown', 0)  -- GO!
     end)
 
-    -- Timer global de voo (começa DEPOIS do countdown)
+    -- Timer global de voo (após countdown)
     local totalDelay = (Config.FlightTimeSeconds + countdownSecs) * 1000
     SetTimeout(totalDelay, function()
         if not GameState.active then return end
-        -- Forçar todos a "aterrarem" automaticamente (com dados vazios se não aterraram)
-        for src, p in pairs(GameState.players) do
+        -- Forçar aterragem dos que ainda não aterraram
+        for psrc, p in pairs(GameState.players) do
             if not p.landed then
                 p.landed     = true
-                p.x          = 0; p.y = 0; p.z = 0
                 p.landHealth = 0
+                p.x = 0; p.y = 0; p.z = 0
                 GameState.landedCount = GameState.landedCount + 1
-                TriggerClientEvent('landing:forceLand', src)
+                TriggerClientEvent('landing:forceLand', psrc)
             end
         end
-        -- Pequena espera e iniciar votação
-        SetTimeout(2000, function()
-            if GameState.active then
-                startVotePhase()
-            end
-        end)
+        SetTimeout(2000, startResultsPhase)
+    end)
+end)
+
+-- =====================================================
+-- COMANDO: abrir picker de zona para o iniciador
+-- =====================================================
+QBCore.Commands.Add(Config.Command, 'Iniciar competição de aterragem de aviões', {}, false, function(source, args)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return end
+
+    if GameState.active or GameState.initiator then
+        TriggerClientEvent('QBCore:Notify', source, '⚠️ Já existe um jogo ativo!', 'error', 3000)
+        return
+    end
+
+    local players = QBCore.Functions.GetPlayers()
+    if #players < 1 then
+        TriggerClientEvent('QBCore:Notify', source, '⚠️ Precisas de pelo menos 1 jogador.', 'error', 3000)
+        return
+    end
+
+    -- Escolher avião aleatório (igual para todos)
+    GameState.initiator = source
+    GameState.plane     = getRandomElement(Config.Planes)
+
+    -- Abrir picker de zona para o iniciador
+    TriggerClientEvent('landing:openPicker', source, {
+        zones = Config.LandingZones,
+        plane = GameState.plane,
+    })
+
+    -- Timeout de segurança: se o picker for abandonado, reset após 3 minutos
+    SetTimeout(180000, function()
+        if GameState.initiator == source and not GameState.active then
+            GameState.initiator = nil
+            GameState.plane     = nil
+            TriggerClientEvent('landing:nuiEvent', source, 'hide', {})
+            TriggerClientEvent('QBCore:Notify', source, '⏰ Picker expirou. Usa o comando novamente.', 'error', 4000)
+        end
     end)
 end)

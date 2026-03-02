@@ -1,14 +1,14 @@
 /**
- * app.js — Main NUI message dispatcher and view manager
+ * app.js — NUI message dispatcher and view manager
  */
 
 // =====================================================
 // VIEW MANAGER
 // =====================================================
 const Views = {
+    picker: document.getElementById('view-picker'),
     map: document.getElementById('view-map'),
-    voting: document.getElementById('view-voting'),
-    scoreboard: document.getElementById('view-scoreboard'),
+    results: document.getElementById('view-results'),
 };
 
 function showView(name) {
@@ -32,21 +32,19 @@ function showCountdown(tick) {
     numEl.classList.remove('go');
 
     if (tick === 0) {
-        // GO!
         numEl.classList.add('go');
         numEl.textContent = 'GO!';
-        // Re-trigger animation
-        numEl.style.animation = 'none';
-        void numEl.offsetWidth;
-        numEl.style.animation = '';
-        // Hide after 800ms
-        setTimeout(() => overlay.classList.add('hidden'), 800);
     } else {
         numEl.textContent = tick;
-        // Re-trigger animation for each number
-        numEl.style.animation = 'none';
-        void numEl.offsetWidth;
-        numEl.style.animation = '';
+    }
+
+    // Re-trigger animation
+    numEl.style.animation = 'none';
+    void numEl.offsetWidth;
+    numEl.style.animation = '';
+
+    if (tick === 0) {
+        setTimeout(() => overlay.classList.add('hidden'), 900);
     }
 }
 
@@ -59,7 +57,13 @@ window.addEventListener('message', function (event) {
 
     switch (msg.action) {
 
-        // -------- MAP VIEW --------
+        // Zone picker (só iniciador)
+        case 'openPicker':
+            PickerModule.init(msg.zones, msg.plane);
+            showView('picker');
+            break;
+
+        // HUD de voo
         case 'openMap':
             MapModule.init(msg.zone, msg.plane, msg.flightTime);
             showView('map');
@@ -69,104 +73,96 @@ window.addEventListener('message', function (event) {
             MapModule.updateTimer(msg.seconds);
             break;
 
-        // -------- COUNTDOWN --------
+        // Countdown 10→0→GO
         case 'countdown':
             showCountdown(msg.tick);
             break;
 
-        case 'myLandingCard':
-            // Salvar o card do próprio jogador para votação
-            VotingModule.storeMyCard(msg.cardData, msg.name);
-            break;
-
-        // -------- FEED DE ATERRAGENS --------
+        // Feed lateral de aterragens
         case 'playerLanded':
             MapModule.addLandedFeed(msg.data.name, msg.data.count, msg.data.total);
             break;
 
-        // -------- VOTING VIEW --------
-        case 'openVoting':
-            VotingModule.init(msg.data.cards, msg.data.duration);
-            showView('voting');
-            break;
-
-        // -------- SCOREBOARD --------
-        case 'openScoreboard':
-            ScoreboardModule.init(msg.data.results, msg.data.zone);
-            showView('scoreboard');
+        // Resultados GeoGuessr
+        case 'openResults':
+            ResultsModule.init(msg.data.results, msg.data.zone, msg.data.duration);
+            showView('results');
             break;
 
         case 'hide':
             hideAll();
             break;
-
-        default:
-            break;
     }
 });
 
 // =====================================================
-// DEV MODE: mock data se abrir no browser diretamente
+// DEV MODE — só em browser normal, nunca no FiveM
 // =====================================================
-if (!window.invokeNative) {
-    // Simular abertura do mapa após 500ms
+const isFiveM = window.location.protocol === 'nui:';
+if (!isFiveM) {
+    const mockZones = [
+        { label: 'Cruzamento Downtown', hint: 'Aterra no centro!', mapX: 52, mapY: 58 },
+        { label: 'Autoestrada Route 1', hint: 'Meio da estrada.', mapX: 52, mapY: 67 },
+        { label: 'Monte Chiliad', hint: 'Boa sorte!', mapX: 43, mapY: 10 },
+    ];
+
+    // t=0: abrir picker
+    setTimeout(() => {
+        window.dispatchEvent(new MessageEvent('message', {
+            data: {
+                action: 'openPicker',
+                zones: mockZones,
+                plane: { label: 'Luxor', model: 'luxor' },
+            }
+        }));
+    }, 400);
+
+    // t=4s: iniciar mapa de voo (simula zona escolhida)
     setTimeout(() => {
         window.dispatchEvent(new MessageEvent('message', {
             data: {
                 action: 'openMap',
-                zone: {
-                    label: 'Cruzamento Downtown Vinewood',
-                    hint: 'Aterra na grande avenida do centro!',
-                    mapX: 52.0,
-                    mapY: 58.0,
-                },
+                zone: { label: 'Cruzamento Downtown', hint: 'Aterra no centro!', mapX: 52, mapY: 58 },
                 plane: { label: 'Luxor', model: 'luxor' },
                 flightTime: 300,
             }
         }));
-    }, 500);
+    }, 4000);
 
-    // Simular aterragem de jogador após 3s
+    // t=5-14s: countdown 10→0
+    for (let i = 10; i >= 0; i--) {
+        (function (tick) {
+            setTimeout(() => {
+                window.dispatchEvent(new MessageEvent('message', { data: { action: 'countdown', tick } }));
+            }, 4500 + (10 - tick) * 1000);
+        })(i);
+    }
+
+    // t=16s: feed de aterragem
     setTimeout(() => {
         window.dispatchEvent(new MessageEvent('message', {
             data: {
                 action: 'playerLanded',
-                data: { name: 'João Silva', count: 1, total: 3 }
+                data: { name: 'João Costa', count: 1, total: 3 },
             }
         }));
-    }, 3000);
+    }, 16000);
 
-    // Simular abertura de votação após 6s
+    // t=20s: resultados
     setTimeout(() => {
         window.dispatchEvent(new MessageEvent('message', {
             data: {
-                action: 'openVoting',
+                action: 'openResults',
                 data: {
-                    duration: 60,
-                    cards: [
-                        { source: 1, name: 'João Silva', cardData: { speed: 45, heading: 220, damagePercent: 72 } },
-                        { source: 2, name: 'Marco Ferreira', cardData: { speed: 12, heading: 185, damagePercent: 30 } },
-                        { source: 3, name: 'Rui Costa', cardData: { speed: 88, heading: 310, damagePercent: 95 } },
-                    ],
-                }
-            }
-        }));
-    }, 6000);
-
-    // Simular scoreboard após 14s
-    setTimeout(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-            data: {
-                action: 'openScoreboard',
-                data: {
-                    zone: { label: 'Cruzamento Downtown Vinewood' },
+                    duration: 30,
+                    zone: { label: 'Cruzamento Downtown', mapX: 52, mapY: 58 },
                     results: [
-                        { rank: 1, name: 'Marco Ferreira', landed: true, dist: 18, distPts: 3500, dmgPts: 500, dmgLabel: '⚠️ Arranhada', votes: 2, votePts: 1500, total: 5500, source: 2 },
-                        { rank: 2, name: 'João Silva', landed: true, dist: 42, distPts: 2000, dmgPts: 1000, dmgLabel: '🔥 Danificada', votes: 1, votePts: 750, total: 3750, source: 1 },
-                        { rank: 3, name: 'Rui Costa', landed: true, dist: 110, distPts: 500, dmgPts: 2000, dmgLabel: '💥 Destruída', votes: 0, votePts: 0, total: 2500, source: 3 },
+                        { rank: 1, name: 'João Costa', landed: true, exploded: false, dist: 14, pts: 8860, mapX: 51.5, mapY: 57.3 },
+                        { rank: 2, name: 'Marco Ferreira', landed: true, exploded: false, dist: 67, pts: 9330, mapX: 53.8, mapY: 59.1 },
+                        { rank: 3, name: 'Rui Silva', landed: true, exploded: true, dist: 210, pts: 3900, mapX: 48.0, mapY: 62.0 },
                     ],
-                }
+                },
             }
         }));
-    }, 14000);
+    }, 20000);
 }

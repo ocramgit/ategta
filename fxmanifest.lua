@@ -4,7 +4,7 @@ game 'gta5'
 name 'Landing Competition'
 description 'Minijogo de competição de aterragem de aviões para QBCore'
 author 'servidor'
-version '1.0.0'
+version '1.1.0'
 
 shared_scripts {
     '@qb-core/shared/locale.lua',
@@ -12,7 +12,6 @@ shared_scripts {
 }
 
 server_scripts {
-    '@oxmysql/lib/MySQL.lua',
     'server/main.lua'
 }
 
@@ -28,7 +27,7 @@ files {
     'html/css/style.css',
     'html/js/app.js',
     'html/js/map.js',
-    'html/js/voting.js',
-    'html/js/scoreboard.js',
+    'html/js/picker.js',
+    'html/js/results.js',
     'html/assets/map.png'
 }
