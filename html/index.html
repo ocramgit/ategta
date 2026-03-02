@@ -2,131 +2,85 @@
 <html lang="pt">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Landing Competition</title>
 
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;900&display=swap"
-        rel="stylesheet" />
-
     <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 
-    <link rel="stylesheet" href="css/style.css" />
+    <link rel="stylesheet" href="css/style.css">
 </head>
 
 <body>
 
-    <div id="app" class="hidden">
-
-        <!-- ======== VIEW: PICKER (só para o iniciador) ======== -->
-        <div id="view-picker" class="view hidden">
-            <div class="picker-container">
-                <!-- Leaflet map renders here -->
-                <div id="picker-map-leaflet"></div>
-
-                <!-- Info painel (overlay no topo) -->
-                <div class="picker-overlay-ui">
-                    <div class="picker-header">
-                        <div class="map-badge">✈️ ESCOLHE A ZONA DE ATERRAGEM</div>
-                        <div class="picker-plane-info">
-                            Avião: <strong id="picker-plane-name">–</strong>
-                        </div>
-                    </div>
-                    <div class="picker-hint">🖱️ Clica em qualquer ponto do mapa · Zoom com scroll · Clica de novo para
-                        mudar</div>
-                </div>
-                <!-- Confirm button injected here by picker.js -->
-            </div>
+    <!-- ═══════════════════════════════════════
+       VIEW 1: PICKER (apenas para o iniciador)
+  ═══════════════════════════════════════ -->
+    <div id="picker-view" class="view hidden">
+        <div id="picker-header">
+            <span class="picker-title">✈️ Escolhe o Ponto de Aterragem</span>
+            <span class="picker-hint">Clica em qualquer ponto do mapa</span>
         </div>
-
-        <!-- ======== VIEW: MAP (HUD de voo) ======== -->
-        <div id="view-map" class="view hidden">
-            <div class="map-container">
-                <div id="map-bg"></div>
-
-                <div id="landing-marker" class="marker-pulse">
-                    <div class="marker-ring"></div>
-                    <div class="marker-dot"></div>
-                    <div class="marker-label" id="marker-label">–</div>
-                </div>
-
-                <div class="map-overlay">
-                    <div class="map-header">
-                        <div class="map-badge">✈️ LANDING COMPETITION</div>
-                        <div class="timer-box">
-                            <span class="timer-label">TEMPO</span>
-                            <span id="hud-timer" class="timer-value">5:00</span>
-                        </div>
-                    </div>
-
-                    <div class="info-panel">
-                        <div class="info-row">
-                            <span class="info-icon">✈️</span>
-                            <span class="info-text">Avião: <strong id="plane-name">–</strong></span>
-                        </div>
-                        <div class="info-row">
-                            <span class="info-icon">📍</span>
-                            <span class="info-text">Destino: <strong id="zone-name">–</strong></span>
-                        </div>
-                        <div class="info-row hint-row">
-                            <span class="info-icon">💬</span>
-                            <span class="info-text" id="zone-hint">–</span>
-                        </div>
-                    </div>
-
-                    <div class="landed-feed" id="landed-feed"></div>
-                </div>
-            </div>
+        <div id="picker-map"></div>
+        <div id="picker-confirm" class="hidden">
+            <div id="picker-coords-label"></div>
+            <button id="btn-confirm">✅ Confirmar este ponto</button>
         </div>
-
-        <!-- ======== VIEW: RESULTS (GeoGuessr style) ======== -->
-        <div id="view-results" class="view hidden">
-            <div class="results-container">
-
-                <!-- Leaflet map (left) -->
-                <div class="results-map-wrap">
-                    <div id="results-map-leaflet"></div>
-                </div>
-
-                <!-- Sidebar (right) -->
-                <div class="results-sidebar">
-                    <div class="results-header">
-                        <div class="trophy-emoji">🏁</div>
-                        <h2>Resultados Finais</h2>
-                        <div class="results-zone-label" id="results-zone-label">–</div>
-                    </div>
-
-                    <div class="results-list" id="results-list"></div>
-
-                    <div class="results-footer">
-                        <div class="close-countdown-wrap">
-                            <span>A fechar em </span>
-                            <span id="results-timer" class="results-countdown">30</span>s
-                        </div>
-                        <p class="close-hint">Prima ESC para fechar</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-    </div><!-- #app -->
-
-    <!-- Countdown Overlay -->
-    <div id="countdown-overlay" class="hidden">
-        <div id="countdown-number">10</div>
     </div>
 
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- ═══════════════════════════════════════
+       VIEW 2: HUD DE VOO
+  ═══════════════════════════════════════ -->
+    <div id="hud-view" class="view hidden">
+        <!-- Countdown overlay (durante 10s iniciais) -->
+        <div id="countdown-overlay">
+            <div id="countdown-number">10</div>
+            <div id="countdown-label">Prepara-te para descolar!</div>
+        </div>
 
-    <!-- App Scripts -->
-    <script src="js/map.js"></script>
-    <script src="js/picker.js"></script>
-    <script src="js/results.js"></script>
+        <!-- HUD fixo no canto superior direito -->
+        <div id="flight-hud">
+            <div id="hud-plane-name"></div>
+            <div id="hud-timer-label">TEMPO RESTANTE</div>
+            <div id="hud-timer">05:00</div>
+            <div id="hud-target-label">PONTO ALVO</div>
+            <div id="hud-target-coords"></div>
+        </div>
+
+        <!-- Feed de aterragens -->
+        <div id="feed-list"></div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+       VIEW 3: RESULTADOS (estilo GeoGuessr)
+  ═══════════════════════════════════════ -->
+    <div id="results-view" class="view hidden">
+        <div id="results-container">
+            <div id="results-map-wrap">
+                <div id="results-map"></div>
+            </div>
+            <div id="results-sidebar">
+                <div id="results-title">🏆 Resultados Finais</div>
+                <div id="results-ranking"></div>
+                <div id="results-footer">
+                    <div id="results-progress-bar">
+                        <div id="results-progress-fill"></div>
+                    </div>
+                    <div id="results-close-hint">A fechar em <span id="results-countdown">30</span>s &nbsp;·&nbsp; ESC
+                        para fechar</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
     <script src="js/app.js"></script>
+    <script src="js/picker.js"></script>
+    <script src="js/map.js"></script>
+    <script src="js/results.js"></script>
 </body>
 
 </html>

@@ -1,97 +1,136 @@
-/**
- * app.js — NUI message dispatcher and view manager
- * The NUI starts hidden. Only shows when Lua sends a message.
- */
+/* ============================================================
+   app.js — NUI Message Dispatcher + Dev Mode
+   ============================================================ */
 
-// =====================================================
-// VIEW MANAGER
-// =====================================================
-const Views = {
-    picker: document.getElementById('view-picker'),
-    map: document.getElementById('view-map'),
-    results: document.getElementById('view-results'),
-};
+const IS_FIVEM = window.location.hostname !== '' && window.location.protocol === 'nui:';
+const resourceName = (() => {
+    try { return window.location.hostname; } catch (e) { return 'landing-competition'; }
+})();
 
-function showView(name) {
-    Object.values(Views).forEach(v => v.classList.add('hidden'));
-    if (Views[name]) Views[name].classList.remove('hidden');
-    document.getElementById('app').classList.remove('hidden');
-}
+// ── Handler principal ─────────────────────────────────────────
 
-function hideAll() {
-    document.getElementById('app').classList.add('hidden');
-}
-
-// =====================================================
-// COUNTDOWN OVERLAY
-// =====================================================
-function showCountdown(tick) {
-    const overlay = document.getElementById('countdown-overlay');
-    const numEl = document.getElementById('countdown-number');
-
-    overlay.classList.remove('hidden');
-    numEl.classList.remove('go');
-
-    if (tick === 0) {
-        numEl.classList.add('go');
-        numEl.textContent = 'GO!';
-    } else {
-        numEl.textContent = tick;
-    }
-
-    // Re-trigger CSS animation
-    numEl.style.animation = 'none';
-    void numEl.offsetWidth;
-    numEl.style.animation = '';
-
-    if (tick === 0) {
-        setTimeout(() => overlay.classList.add('hidden'), 900);
-    }
-}
-
-// =====================================================
-// MAIN MESSAGE HANDLER (Lua → NUI)
-// =====================================================
 window.addEventListener('message', function (event) {
-    const msg = event.data;
-    if (!msg || !msg.action) return;
+    const data = event.data;
+    if (!data || !data.action) return;
 
-    switch (msg.action) {
-
-        // Zone picker (só para o iniciador)
-        case 'openPicker':
-            PickerModule.init(msg.zones, msg.plane);
-            showView('picker');
+    switch (data.action) {
+        case 'showPicker':
+            showView('picker-view');
+            initPicker();
             break;
 
-        // HUD de voo
-        case 'openMap':
-            MapModule.init(msg.zone, msg.plane, msg.flightTime);
-            showView('map');
+        case 'showHUD':
+            showView('hud-view');
+            initHUD(data.zone, data.planeName);
             break;
 
-        case 'updateTimer':
-            MapModule.updateTimer(msg.seconds);
-            break;
-
-        // Countdown 10 → 0 → GO!
         case 'countdown':
-            showCountdown(msg.tick);
+            updateCountdown(data.value);
             break;
 
-        // Feed lateral de aterragens
-        case 'playerLanded':
-            MapModule.addLandedFeed(msg.data.name, msg.data.count, msg.data.total);
+        case 'timerTick':
+            updateTimer(data.value);
             break;
 
-        // Resultados GeoGuessr
-        case 'openResults':
-            ResultsModule.init(msg.data.results, msg.data.zone, msg.data.duration);
-            showView('results');
+        case 'feed':
+            addFeedItem(data.message);
             break;
 
-        case 'hide':
-            hideAll();
+        case 'showResults':
+            showView('results-view');
+            initResults(data.results, data.zone);
+            break;
+
+        case 'hideNUI':
+            hideAllViews();
             break;
     }
 });
+
+// ── Utilitários de view ───────────────────────────────────────
+
+function showView(id) {
+    document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('hidden');
+}
+
+function hideAllViews() {
+    document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+}
+
+// ── ESC fecha results ─────────────────────────────────────────
+
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+        const rv = document.getElementById('results-view');
+        if (rv && !rv.classList.contains('hidden')) {
+            nuiCallback('closeResults', {});
+        }
+    }
+});
+
+// ── NUI Callback helper ───────────────────────────────────────
+
+function nuiCallback(name, data) {
+    fetch(`https://${resourceName}/${name}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    }).catch(() => { });
+}
+
+// ── DEV MODE (abrir index.html direto no browser) ─────────────
+
+if (!IS_FIVEM) {
+    console.log('[DEV] Modo desenvolvimento ativado');
+
+    // Simular sequência completa
+    setTimeout(() => {
+        window.dispatchEvent(new MessageEvent('message', { data: { action: 'showPicker' } }));
+    }, 300);
+
+    // Simula confirmação automática após 4 segundos no dev mode
+    setTimeout(() => {
+        const devZone = { worldX: -400, worldY: -1200, worldZ: 30, mapX: 42.4, mapY: 68.3 };
+        window.dispatchEvent(new MessageEvent('message', {
+            data: {
+                action: 'showHUD',
+                zone: devZone,
+                planeName: 'Luxor (DEV)',
+            }
+        }));
+        for (let t = 10; t >= 0; t--) {
+            setTimeout(() => {
+                window.dispatchEvent(new MessageEvent('message', { data: { action: 'countdown', value: t } }));
+            }, (10 - t) * 1000);
+        }
+    }, 5000);
+
+    // Feed messages
+    setTimeout(() => {
+        window.dispatchEvent(new MessageEvent('message', { data: { action: 'feed', message: '🛬 Marco aterrou a 120m — 8800 pts' } }));
+    }, 17000);
+    setTimeout(() => {
+        window.dispatchEvent(new MessageEvent('message', { data: { action: 'feed', message: '💥 João aterrou a 450m — 5500 pts (penalização -3000)' } }));
+    }, 19000);
+    setTimeout(() => {
+        window.dispatchEvent(new MessageEvent('message', { data: { action: 'feed', message: '🛬 Ana aterrou a 88m — 9120 pts' } }));
+    }, 21000);
+
+    // Resultados
+    setTimeout(() => {
+        const devZone = { worldX: -400, worldY: -1200, worldZ: 30, mapX: 42.4, mapY: 68.3 };
+        window.dispatchEvent(new MessageEvent('message', {
+            data: {
+                action: 'showResults',
+                zone: devZone,
+                results: [
+                    { rank: 1, name: 'Ana', dist: 88, exploded: false, score: 9120, mapX: 43.0, mapY: 68.0 },
+                    { rank: 2, name: 'Marco', dist: 120, exploded: false, score: 8800, mapX: 44.1, mapY: 69.5 },
+                    { rank: 3, name: 'João', dist: 450, exploded: true, score: 2500, mapX: 46.8, mapY: 71.2 },
+                ]
+            }
+        }));
+    }, 24000);
+}

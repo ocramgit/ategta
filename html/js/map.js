@@ -1,59 +1,92 @@
-/**
- * map.js — Landing zone map display with animated marker
- * Uses percentage-based positioning so it works on any screen size.
- */
+/* ============================================================
+   map.js — Flight HUD: countdown overlay + timer + feed
+   ============================================================ */
 
-const MapModule = (() => {
-    let timerInterval = null;
+let flightTimerInterval = null;
+let countdownTimeout = null;
 
-    function init(zone, plane, flightTimeSec) {
-        // Plane and zone info
-        document.getElementById('plane-name').textContent = plane.label;
-        document.getElementById('zone-name').textContent = zone.label;
-        document.getElementById('zone-hint').textContent = zone.hint || '';
-        document.getElementById('marker-label').textContent = zone.label;
+function initHUD(zone, planeName) {
+    // Mostrar nome do avião
+    const nameEl = document.getElementById('hud-plane-name');
+    if (nameEl) nameEl.textContent = planeName || 'Avião';
 
-        // Position marker using percentage coords from config
-        const marker = document.getElementById('landing-marker');
-        marker.style.left = zone.mapX + '%';
-        marker.style.top = zone.mapY + '%';
-
-        // Initial timer display
-        updateTimer(flightTimeSec);
-
-        // Clear old feed
-        document.getElementById('landed-feed').innerHTML = '';
+    // Coords do alvo no HUD
+    const coordsEl = document.getElementById('hud-target-coords');
+    if (coordsEl && zone) {
+        coordsEl.textContent = `X: ${Math.round(zone.worldX)} · Y: ${Math.round(zone.worldY)}`;
     }
 
-    function updateTimer(seconds) {
-        const el = document.getElementById('hud-timer');
-        const m = Math.floor(seconds / 60);
-        const s = seconds % 60;
-        el.textContent = m + ':' + String(s).padStart(2, '0');
+    // Mostrar countdown overlay
+    const overlay = document.getElementById('countdown-overlay');
+    if (overlay) overlay.classList.remove('gone');
 
-        // Visual warnings
-        el.classList.remove('warning', 'danger');
-        if (seconds <= 30) el.classList.add('danger');
-        else if (seconds <= 60) el.classList.add('warning');
+    // Parar timer anterior se existir
+    if (flightTimerInterval) {
+        clearInterval(flightTimerInterval);
+        flightTimerInterval = null;
     }
 
-    function addLandedFeed(name, count, total) {
-        const feed = document.getElementById('landed-feed');
-        const item = document.createElement('div');
-        item.className = 'feed-item';
-        item.innerHTML = `<span class="feed-name">✅ ${escapeHtml(name)}</span> aterrou! (${count}/${total})`;
-        feed.appendChild(item);
+    // Timer inicial
+    updateTimer(300);
 
-        // Auto-remove old entries (keep max 6)
-        const items = feed.querySelectorAll('.feed-item');
-        if (items.length > 6) items[0].remove();
+    // Limpar feed
+    const feed = document.getElementById('feed-list');
+    if (feed) feed.innerHTML = '';
+}
+
+function updateCountdown(value) {
+    const numEl = document.getElementById('countdown-number');
+    const overlay = document.getElementById('countdown-overlay');
+    if (!numEl || !overlay) return;
+
+    if (value <= 0) {
+        numEl.textContent = 'GO!';
+        numEl.classList.add('go');
+        setTimeout(() => {
+            overlay.classList.add('gone');
+            numEl.classList.remove('go');
+        }, 900);
+    } else {
+        numEl.classList.remove('go');
+        numEl.textContent = value;
+        // Animação por cada número
+        numEl.style.animation = 'none';
+        void numEl.offsetWidth;
+        numEl.style.animation = 'cd-pulse 1s ease-in-out';
     }
+}
 
-    function escapeHtml(str) {
-        return String(str).replace(/[&<>"']/g, c => ({
-            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-        }[c]));
+function updateTimer(seconds) {
+    const timerEl = document.getElementById('hud-timer');
+    if (!timerEl) return;
+
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    timerEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+    timerEl.classList.remove('warn', 'alert');
+    if (seconds <= 30) {
+        timerEl.classList.add('alert');
+    } else if (seconds <= 60) {
+        timerEl.classList.add('warn');
     }
+}
 
-    return { init, updateTimer, addLandedFeed };
-})();
+// Feed de aterragens
+function addFeedItem(message) {
+    const feed = document.getElementById('feed-list');
+    if (!feed) return;
+
+    const item = document.createElement('div');
+    item.className = 'feed-item';
+    item.textContent = message;
+    feed.prepend(item);
+
+    // Fade out depois de 6 segundos
+    setTimeout(() => { item.classList.add('fading'); }, 6000);
+    setTimeout(() => { if (item.parentNode) item.remove(); }, 7200);
+
+    // Máximo de 5 mensagens
+    const items = feed.querySelectorAll('.feed-item');
+    if (items.length > 5) items[items.length - 1].remove();
+}

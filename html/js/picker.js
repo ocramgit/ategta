@@ -1,134 +1,88 @@
-/**
- * picker.js — Zoomable GTA V map picker using Leaflet.js
- * Uses GTA V map tiles. Click anywhere to place a marker, then confirm.
- * Uses GetParentResourceName() for reliable FiveM NUI callback.
- */
+/* ============================================================
+   picker.js — Leaflet map com imagem GTA V (imageOverlay)
+   Clique livre no mapa → pin 📍 → botão confirmar
+   ============================================================ */
 
-const PickerModule = (() => {
-    let map = null;
-    let marker = null;
-    let selectedLatLng = null;
+// Dimensões do mapa GTA V no espaço Leaflet (pixels da imagem)
+// A imagem gtamap.jpg tem proporção ~8500x12000 (mundo GTA V)
+// Usamos uma escala 1:1 em L.CRS.Simple: 1 pixel = 10m de mundo
+const MAP_W = 850;   // largura da imagem
+const MAP_H = 1200;  // altura da imagem
 
-    // GTA V map bounds (Leaflet uses [lat, lng] but we repurpose for [y, x])
-    // We project GTA world coords onto a 2048×2048 tile grid
-    // Using the publicly available GTA V map tile layer
-    const GTA_BOUNDS = [[-3000, -3000], [3000, 3000]];
+let pickerMap = null;
+let pickerMarker = null;
+let pendingCoords = null;
 
-    function init(zoneList, plane) {
-        document.getElementById('picker-plane-name').textContent = plane?.label || '–';
-
-        // Destroy any previous map instance
-        if (map) {
-            map.remove();
-            map = null;
-        }
-        selectedLatLng = null;
-        marker = null;
-
-        // Clear markers div (now houses the Leaflet map)
-        const mapEl = document.getElementById('picker-map-leaflet');
-
-        // Initialize Leaflet with GTA V CRS
-        map = L.map(mapEl, {
-            crs: L.CRS.Simple,
-            minZoom: -3,
-            maxZoom: 3,
-            zoomControl: true,
-            attributionControl: false,
-        });
-
-        // GTA V map tiles — using the tile layer from gtamap.dev
-        // Tiles are served as a standard slippy map
-        const tileUrl = 'https://maptilesv3.gta5.dev/gta5tiles/tiles/{z}/{x}/{y}.jpg';
-
-        // Bounds for the CRS.Simple projection
-        // The tile layer covers exactly these bounds
-        const bounds = L.latLngBounds(
-            map.unproject([0, 16384], 4),
-            map.unproject([16384, 0], 4)
-        );
-
-        L.tileLayer(tileUrl, {
-            tileSize: 256,
-            minZoom: -3,
-            maxZoom: 3,
-            noWrap: true,
-            bounds: bounds,
-        }).addTo(map);
-
-        // Fit to the tile bounds and start at a reasonable zoom level
-        map.fitBounds(bounds);
-
-        // Custom pin icon
-        const pinIcon = L.divIcon({
-            className: 'leaflet-gta-pin',
-            html: '<div class="lpin-dot">📍</div>',
-            iconSize: [40, 40],
-            iconAnchor: [20, 40],
-        });
-
-        // Click handler
-        map.on('click', function (e) {
-            if (marker) {
-                marker.setLatLng(e.latlng);
-            } else {
-                marker = L.marker(e.latlng, { icon: pinIcon }).addTo(map);
-            }
-            selectedLatLng = e.latlng;
-            showConfirmButton(e.latlng);
-        });
-
-        // Style the map container
-        const container = document.querySelector('.picker-container');
-        container.style.cursor = 'crosshair';
+function initPicker() {
+    if (pickerMap) {
+        pickerMap.invalidateSize();
+        return;
     }
 
-    function showConfirmButton(latlng) {
-        let wrap = document.getElementById('picker-confirm-wrap');
-        if (!wrap) {
-            wrap = document.createElement('div');
-            wrap.id = 'picker-confirm-wrap';
-            document.querySelector('.picker-container').appendChild(wrap);
-        }
-        wrap.innerHTML = `<button id="picker-confirm-btn">✅ Confirmar este ponto</button>`;
+    const bounds = [[0, 0], [MAP_H, MAP_W]];
 
-        document.getElementById('picker-confirm-btn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            confirmSelection();
-        });
-    }
+    pickerMap = L.map('picker-map', {
+        crs: L.CRS.Simple,
+        minZoom: -1,
+        maxZoom: 3,
+        zoomControl: true,
+        attributionControl: false,
+    });
 
-    function confirmSelection() {
-        if (!selectedLatLng || !map) return;
+    // Imagem do mapa GTA V como overlay
+    L.imageOverlay('assets/gtamap.jpg', bounds).addTo(pickerMap);
+    pickerMap.fitBounds(bounds);
 
-        const btn = document.getElementById('picker-confirm-btn');
-        if (btn) { btn.disabled = true; btn.textContent = '⏳ A confirmar...'; }
+    // Clique no mapa
+    pickerMap.on('click', function (e) {
+        const ly = e.latlng.lat;
+        const lx = e.latlng.lng;
 
-        // Convert Leaflet latlng back to pixel then to map %
-        const point = map.project(selectedLatLng, 4);
-        const mapX = (point.x / 16384 * 100).toFixed(2);
-        const mapY = (point.y / 16384 * 100).toFixed(2);
+        // Clamp dentro dos bounds
+        const clampedX = Math.max(0, Math.min(MAP_W, lx));
+        const clampedY = Math.max(0, Math.min(MAP_H, ly));
 
-        // GetParentResourceName() — FiveM NUI native, always correct
-        const resName = (typeof GetParentResourceName !== 'undefined')
-            ? GetParentResourceName()
-            : (window.location.hostname || 'landing-competition');
+        // Percentagem dentro do mapa
+        const mapXpct = (clampedX / MAP_W) * 100;
+        const mapYpct = ((MAP_H - clampedY) / MAP_H) * 100;  // Y invertido
 
-        fetch(`https://${resName}/zoneSelected`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mapX: parseFloat(mapX), mapY: parseFloat(mapY) })
-        }).then(() => {
-            if (btn) btn.textContent = '✅ Confirmado!';
-        }).catch(() => {
-            if (btn) {
-                btn.disabled = false;
-                btn.textContent = '❌ Erro! Tenta novamente';
-                btn.style.background = 'linear-gradient(135deg,#ff2d55,#c0002c)';
-                btn.style.color = '#fff';
-            }
-        });
-    }
+        // Conversão para coords mundo GTA V
+        const worldX = (mapXpct / 100 * 8500) - 4000;
+        const worldY = 8000 - (mapYpct / 100 * 12000);
 
-    return { init };
-})();
+        pendingCoords = {
+            worldX: Math.round(worldX * 10) / 10,
+            worldY: Math.round(worldY * 10) / 10,
+            worldZ: 30.0,
+            mapX: Math.round(mapXpct * 100) / 100,
+            mapY: Math.round(mapYpct * 100) / 100,
+        };
+
+        // Pin
+        if (pickerMarker) pickerMap.removeLayer(pickerMarker);
+        pickerMarker = L.marker([clampedY, clampedX], {
+            icon: L.divIcon({
+                className: '',
+                html: '<div class="landing-pin">📍</div>',
+                iconSize: [32, 32],
+                iconAnchor: [16, 32],
+            }),
+            zIndexOffset: 1000,
+        }).addTo(pickerMap);
+
+        // Mostrar painel de confirmação
+        const panel = document.getElementById('picker-confirm');
+        panel.classList.remove('hidden');
+
+        const label = document.getElementById('picker-coords-label');
+        label.textContent = `Ponto selecionado · X: ${pendingCoords.worldX.toFixed(0)} · Y: ${pendingCoords.worldY.toFixed(0)}`;
+    });
+
+    // Botão confirmar
+    document.getElementById('btn-confirm').addEventListener('click', function () {
+        if (!pendingCoords) return;
+        nuiCallback('zoneConfirmed', pendingCoords);
+        document.getElementById('picker-view').classList.add('hidden');
+        document.getElementById('picker-confirm').classList.add('hidden');
+    });
+}

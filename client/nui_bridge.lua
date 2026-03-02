@@ -1,42 +1,22 @@
--- NUI Bridge — Callbacks NUI → Lua  e  Lua → NUI
+-- ============================================================
+--  LANDING COMPETITION — Client NUI Bridge
+-- ============================================================
 
--- =====================================================
--- NUI CALLBACKS (NUI → Lua)
--- =====================================================
+local resourceName = GetCurrentResourceName()
 
--- Iniciador selecionou uma zona no picker (free-click: envia {mapX, mapY})
-RegisterNUICallback('zoneSelected', function(data, cb)
-    TriggerServerEvent('landing:zoneSelected', data)  -- data = {mapX=..., mapY=...}
+-- ── Picker: jogador confirmou o ponto no mapa ─────────────────
+
+RegisterNUICallback('zoneConfirmed', function(data, cb)
     SetNuiFocus(false, false)
+    -- data: { worldX, worldY, worldZ, mapX, mapY }
+    TriggerServerEvent('landing:zoneSelected', data)
     cb({ ok = true })
 end)
 
--- Fechar UI (ESC no ecrã de resultados)
-RegisterNUICallback('closeUI', function(_, cb)
+-- ── Resultados: fechar ecrã ───────────────────────────────────
+
+RegisterNUICallback('closeResults', function(data, cb)
     SetNuiFocus(false, false)
-    SendNUIMessage({ action = 'hide' })
+    SendNUIMessage({ action = 'hideNUI' })
     cb({ ok = true })
 end)
-
--- =====================================================
--- EVENTOS DO SERVIDOR → NUI
--- =====================================================
-
-RegisterNetEvent('landing:nuiEvent', function(event, data)
-    SendNUIMessage({ action = event, data = data })
-
-    -- Resultados: bloquear focus para o jogador ver o mapa
-    if event == 'openResults' then
-        SetNuiFocus(true, true)
-    end
-end)
-
--- =====================================================
--- FECHAR NUI COM ESC
--- =====================================================
-RegisterCommand('landing_close', function()
-    SetNuiFocus(false, false)
-    SendNUIMessage({ action = 'hide' })
-end)
-
-RegisterKeyMapping('landing_close', 'Fechar Landing UI', 'keyboard', 'ESCAPE')
