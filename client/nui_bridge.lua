@@ -4,9 +4,9 @@
 -- NUI CALLBACKS (NUI → Lua)
 -- =====================================================
 
--- Iniciador selecionou uma zona no picker
+-- Iniciador selecionou uma zona no picker (free-click: envia {mapX, mapY})
 RegisterNUICallback('zoneSelected', function(data, cb)
-    TriggerServerEvent('landing:zoneSelected', data.zoneIndex)
+    TriggerServerEvent('landing:zoneSelected', data)  -- data = {mapX=..., mapY=...}
     SetNuiFocus(false, false)
     cb({ ok = true })
 end)

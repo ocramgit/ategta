@@ -1,5 +1,6 @@
 /**
  * app.js — NUI message dispatcher and view manager
+ * The NUI starts hidden. Only shows when Lua sends a message.
  */
 
 // =====================================================
@@ -38,7 +39,7 @@ function showCountdown(tick) {
         numEl.textContent = tick;
     }
 
-    // Re-trigger animation
+    // Re-trigger CSS animation
     numEl.style.animation = 'none';
     void numEl.offsetWidth;
     numEl.style.animation = '';
@@ -57,7 +58,7 @@ window.addEventListener('message', function (event) {
 
     switch (msg.action) {
 
-        // Zone picker (só iniciador)
+        // Zone picker (só para o iniciador)
         case 'openPicker':
             PickerModule.init(msg.zones, msg.plane);
             showView('picker');
@@ -73,7 +74,7 @@ window.addEventListener('message', function (event) {
             MapModule.updateTimer(msg.seconds);
             break;
 
-        // Countdown 10→0→GO
+        // Countdown 10 → 0 → GO!
         case 'countdown':
             showCountdown(msg.tick);
             break;
@@ -94,75 +95,3 @@ window.addEventListener('message', function (event) {
             break;
     }
 });
-
-// =====================================================
-// DEV MODE — só em browser normal, nunca no FiveM
-// =====================================================
-const isFiveM = window.location.protocol === 'nui:';
-if (!isFiveM) {
-    const mockZones = [
-        { label: 'Cruzamento Downtown', hint: 'Aterra no centro!', mapX: 52, mapY: 58 },
-        { label: 'Autoestrada Route 1', hint: 'Meio da estrada.', mapX: 52, mapY: 67 },
-        { label: 'Monte Chiliad', hint: 'Boa sorte!', mapX: 43, mapY: 10 },
-    ];
-
-    // t=0: abrir picker
-    setTimeout(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-            data: {
-                action: 'openPicker',
-                zones: mockZones,
-                plane: { label: 'Luxor', model: 'luxor' },
-            }
-        }));
-    }, 400);
-
-    // t=4s: iniciar mapa de voo (simula zona escolhida)
-    setTimeout(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-            data: {
-                action: 'openMap',
-                zone: { label: 'Cruzamento Downtown', hint: 'Aterra no centro!', mapX: 52, mapY: 58 },
-                plane: { label: 'Luxor', model: 'luxor' },
-                flightTime: 300,
-            }
-        }));
-    }, 4000);
-
-    // t=5-14s: countdown 10→0
-    for (let i = 10; i >= 0; i--) {
-        (function (tick) {
-            setTimeout(() => {
-                window.dispatchEvent(new MessageEvent('message', { data: { action: 'countdown', tick } }));
-            }, 4500 + (10 - tick) * 1000);
-        })(i);
-    }
-
-    // t=16s: feed de aterragem
-    setTimeout(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-            data: {
-                action: 'playerLanded',
-                data: { name: 'João Costa', count: 1, total: 3 },
-            }
-        }));
-    }, 16000);
-
-    // t=20s: resultados
-    setTimeout(() => {
-        window.dispatchEvent(new MessageEvent('message', {
-            data: {
-                action: 'openResults',
-                data: {
-                    duration: 30,
-                    zone: { label: 'Cruzamento Downtown', mapX: 52, mapY: 58 },
-                    results: [
-                        { rank: 1, name: 'João Costa', landed: true, exploded: false, dist: 14, pts: 8860, mapX: 51.5, mapY: 57.3 },
-                        { rank: 2, name: 'Marco Ferreira', landed: true, exploded: false, dist: 67, pts: 9330, mapX: 53.8, mapY: 59.1 },
-                        { rank: 3, name: 'Rui Silva', landed: true, exploded: true, dist: 210, pts: 3900, mapX: 48.0, mapY: 62.0 },
-                    ],
-                },
-            }
-        }));
-    }, 20000);
-}
